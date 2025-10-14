@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, AlertCircle, Loader } from 'lucide-react';
+import { User, Lock, AlertCircle, Loader } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function AdminLogin({ onLogin }) {
-  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -15,38 +16,78 @@ export default function AdminLogin({ onLogin }) {
     setLoading(true);
 
     try {
-      // Supabase Auth ile giriş (örnek implementasyon)
-      // const { data, error: authError } = await supabase.auth.signInWithPassword({
-      //   email: email,
-      //   password: password,
-      // });
+      console.log('🔐 Supabase Auth ile giriş denemesi:', fullName);
 
-      // if (authError) {
-      //   setError(authError.message);
-      //   setLoading(false);
-      //   return;
-      // }
-
-      // Geçici test giriş (Supabase entegre olunca kaldırılacak)
-      if (!email || !password) {
-        setError('Email ve şifre gerekli');
-        setLoading(false);
-        return;
+      let email = fullName;
+      
+      if (!email.includes('@')) {
+        const adminMap = {
+          'marin emlak': 'marin@kristalmarin.com',
+          'marin': 'marin@kristalmarin.com',
+          'admin': 'admin@kristalmarin.com'
+        };
+        
+        email = adminMap[fullName.toLowerCase().trim()] || `${fullName.toLowerCase().replace(/\s+/g, '')}@kristalmarin.com`;
       }
 
-      if (email.includes('@') && password.length >= 6) {
-        // Simüle edilmiş başarılı giriş
-        const token = 'temp_token_' + Date.now();
-        onLogin(email, token);
-        setTimeout(() => {
-          navigate('/admin/panel');
-        }, 500);
-      } else {
-        setError('Geçerli email ve şifre girin');
-        setLoading(false);
+      console.log('📧 Email:', email);
+
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
+
+      if (authError) {
+        console.error('❌ Auth hatası:', authError);
+        
+        if (authError.message.includes('Invalid login credentials')) {
+          throw new Error('Email veya şifre hatalı');
+        } else if (authError.message.includes('Email not confirmed')) {
+          throw new Error('Email adresi onaylanmamış. Dashboard\'dan onaylayın.');
+        } else {
+          throw new Error(authError.message);
+        }
       }
+
+      if (!authData.user || !authData.session) {
+        throw new Error('Giriş başarısız oldu');
+      }
+
+      console.log('✅ Supabase Auth başarılı!');
+
+      const { data: adminUser } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('email', authData.user.email)
+        .eq('is_active', true)
+        .single();
+
+      const fullNameToUse = adminUser?.full_name || 
+                           authData.user.user_metadata?.full_name || 
+                           authData.user.email.split('@')[0];
+
+      console.log('✅ Giriş başarılı:', fullNameToUse);
+
+      onLogin(fullNameToUse, authData.session.access_token, authData.user.email);
+      navigate('/admin/panel');
+
     } catch (err) {
-      setError('Bir hata oluştu. Lütfen tekrar deneyin.');
+      console.error('❌ Login error:', err);
+      
+      let errorMessage = 'Giriş yapılamadı. Lütfen bilgilerinizi kontrol edin.';
+      
+      if (err.message.includes('Email veya şifre hatalı')) {
+        errorMessage = 'Email veya şifre hatalı. Lütfen tekrar deneyin.';
+      } else if (err.message.includes('Email not confirmed')) {
+        errorMessage = 'Email adresi onaylanmamış. Supabase Dashboard\'dan onaylayın.';
+      } else if (err.message.includes('too many requests')) {
+        errorMessage = 'Çok fazla deneme yaptınız. Lütfen birkaç dakika sonra tekrar deneyin.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+    } finally {
       setLoading(false);
     }
   };
@@ -54,7 +95,6 @@ export default function AdminLogin({ onLogin }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-50 px-4 py-12">
       <div className="w-full max-w-md">
-        {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
           {/* Header */}
           <div className="text-center mb-8">
@@ -75,27 +115,26 @@ export default function AdminLogin({ onLogin }) {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Email Input */}
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-900 mb-2">
-                Email Adresiniz
+              <label htmlFor="fullName" className="block text-sm font-semibold text-gray-900 mb-2">
+                Kullanıcı Adı veya Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <input
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@kristalmarin.com"
+                  type="text"
+                  id="fullName"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Marin Emlak veya marin@kristalmarin.com"
                   className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   required
                   disabled={loading}
+                  autoComplete="username"
                 />
               </div>
             </div>
 
-            {/* Password Input */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-gray-900 mb-2">
                 Şifre
@@ -111,11 +150,12 @@ export default function AdminLogin({ onLogin }) {
                   className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   required
                   disabled={loading}
+                  autoComplete="current-password"
+                  minLength={6}
                 />
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
@@ -132,34 +172,26 @@ export default function AdminLogin({ onLogin }) {
             </button>
           </form>
 
-          {/* Divider */}
           <div className="my-6 flex items-center">
             <div className="flex-grow border-t border-gray-300"></div>
-            <span className="px-4 text-sm text-gray-500">ya da</span>
+            <span className="px-4 text-sm text-gray-500">Bilgi</span>
             <div className="flex-grow border-t border-gray-300"></div>
           </div>
 
-          {/* Info Box */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <p className="text-sm text-blue-800">
               <span className="font-semibold">Test Hesabı:</span><br />
-              Email: admin@test.com<br />
-              Şifre: test123456
+              Email: <span className="font-mono">marin@kristalmarin.com</span><br />
+              Şifre: <span className="font-mono">marin123456</span>
             </p>
           </div>
 
-          {/* Back Link */}
           <div className="text-center">
-            <Link to="/" className="text-blue-600 hover:text-blue-700 font-semibold text-sm">
+            <Link to="/" className="text-blue-600 hover:text-blue-700 font-semibold text-sm transition-colors">
               ← Ana Sayfaya Dön
             </Link>
           </div>
         </div>
-
-        {/* Footer Info */}
-        <p className="text-center text-gray-600 text-xs mt-6">
-          Henüz hesabınız yok mu? <span className="text-gray-700 font-semibold">Yöneticiye başvurun</span>
-        </p>
       </div>
     </div>
   );

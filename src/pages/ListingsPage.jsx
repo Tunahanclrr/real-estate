@@ -1,122 +1,98 @@
+// ListingsPage.jsx - Static versiyon
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Bed, Bath, Maximize2, Heart, Search, Filter, ChevronDown } from 'lucide-react';
 
+// Static örnek veriler
+const SAMPLE_LISTINGS = [
+  {
+    id: 1,
+    title: 'Deniz Manzaralı Lüks Villa',
+    location: 'Yalıkavak, Bodrum',
+    price: '$2,500,000',
+    priceNum: 2500000,
+    type: 'villa',
+    bedrooms: 5,
+    bathrooms: 4,
+    area: 450,
+    image: 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800',
+    views: 1250
+  },
+  {
+    id: 2,
+    title: 'Modern Deniz Kenarı Daire',
+    location: 'Türkbükü, Bodrum',
+    price: '$850,000',
+    priceNum: 850000,
+    type: 'daire',
+    bedrooms: 3,
+    bathrooms: 2,
+    area: 180,
+    image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800',
+    views: 890
+  },
+  {
+    id: 3,
+    title: 'Geniş Bahçeli Müstakil Ev',
+    location: 'Gümüşlük, Bodrum',
+    price: '$1,200,000',
+    priceNum: 1200000,
+    type: 'konut',
+    bedrooms: 4,
+    bathrooms: 3,
+    area: 320,
+    image: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800',
+    views: 670
+  },
+  {
+    id: 4,
+    title: 'Deniz Manzaralı Arsa',
+    location: 'Gündoğan, Bodrum',
+    price: '$650,000',
+    priceNum: 650000,
+    type: 'arsa',
+    bedrooms: 0,
+    bathrooms: 0,
+    area: 1000,
+    image: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800',
+    views: 420
+  },
+  {
+    id: 5,
+    title: 'Şehir Merkezinde Lüks Daire',
+    location: 'Merkez, Bodrum',
+    price: '$450,000',
+    priceNum: 450000,
+    type: 'daire',
+    bedrooms: 2,
+    bathrooms: 1,
+    area: 120,
+    image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800',
+    views: 1100
+  },
+  {
+    id: 6,
+    title: 'Havuzlu Modern Villa',
+    location: 'Bitez, Bodrum',
+    price: '$3,200,000',
+    priceNum: 3200000,
+    type: 'villa',
+    bedrooms: 6,
+    bathrooms: 5,
+    area: 550,
+    image: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
+    views: 2340
+  }
+];
+
 export default function ListingsPage() {
-  const [listings, setListings] = useState([]);
-  const [filteredListings, setFilteredListings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [listings] = useState(SAMPLE_LISTINGS);
+  const [filteredListings, setFilteredListings] = useState(SAMPLE_LISTINGS);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [priceRange, setPriceRange] = useState([0, 5000000]);
   const [favorites, setFavorites] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
-
-  useEffect(() => {
-    // Supabase'den verileri çekme
-    // const fetchListings = async () => {
-    //   try {
-    //     const { data, error } = await supabase
-    //       .from('listings')
-    //       .select('*')
-    //       .eq('status', 'aktif')
-    //       .order('created_at', { ascending: false });
-    //     
-    //     if (error) throw error;
-    //     setListings(data || []);
-    //   } catch (error) {
-    //     console.error('Listing yükleme hatası:', error);
-    //   } finally {
-    //     setLoading(false);
-    //   }
-    // };
-    // fetchListings();
-
-    // Test verileri
-    setTimeout(() => {
-      setListings([
-        {
-          id: 1,
-          title: 'Deniz Manzaralı Lüks Villa - Bodrum',
-          price: '$2,500,000',
-          priceNum: 2500000,
-          location: 'Bodrum, Muğla',
-          type: 'villa',
-          bedrooms: 4,
-          bathrooms: 3,
-          area: 350,
-          image: 'https://images.unsplash.com/photo-1570129477492-45c003666880?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-          views: 156
-        },
-        {
-          id: 2,
-          title: 'Modern Denizkenarlı Daire',
-          price: '$1,800,000',
-          priceNum: 1800000,
-          location: 'Bodrum, Muğla',
-          type: 'daire',
-          bedrooms: 3,
-          bathrooms: 2,
-          area: 200,
-          image: 'https://images.unsplash.com/photo-1512917774080-9b274b5ce460?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-          views: 89
-        },
-        {
-          id: 3,
-          title: 'Konforlu Aile Evi',
-          price: '$950,000',
-          priceNum: 950000,
-          location: 'Bodrum, Muğla',
-          type: 'konut',
-          bedrooms: 2,
-          bathrooms: 2,
-          area: 120,
-          image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-          views: 45
-        },
-        {
-          id: 4,
-          title: 'Prestijli İnşaat Arsası',
-          price: '$500,000',
-          priceNum: 500000,
-          location: 'Bodrum, Muğla',
-          type: 'arsa',
-          bedrooms: 0,
-          bathrooms: 0,
-          area: 800,
-          image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-          views: 67
-        },
-        {
-          id: 5,
-          title: 'Dış Mekan Havuzlu Villa',
-          price: '$3,200,000',
-          priceNum: 3200000,
-          location: 'Bodrum, Muğla',
-          type: 'villa',
-          bedrooms: 5,
-          bathrooms: 4,
-          area: 450,
-          image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-          views: 234
-        },
-        {
-          id: 6,
-          title: 'Şehir Merkezinde Ticari Gayrimenkul',
-          price: '$1,200,000',
-          priceNum: 1200000,
-          location: 'Bodrum, Muğla',
-          type: 'daire',
-          bedrooms: 3,
-          bathrooms: 2,
-          area: 180,
-          image: 'https://images.unsplash.com/photo-1493857671505-72967e0e0760?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60',
-          views: 112
-        }
-      ]);
-      setLoading(false);
-    }, 500);
-  }, []);
 
   // Filtreleme
   useEffect(() => {
@@ -259,12 +235,7 @@ export default function ListingsPage() {
 
           {/* Listings */}
           <div className="lg:col-span-3">
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                <p className="text-gray-600">Yükleniyor...</p>
-              </div>
-            ) : filteredListings.length === 0 ? (
+            {filteredListings.length === 0 ? (
               <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
                 <Filter size={48} className="mx-auto text-gray-300 mb-4" />
                 <p className="text-gray-600 text-lg">İlan bulunamadı</p>
@@ -295,23 +266,7 @@ export default function ListingsPage() {
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                         />
 
-                        {/* Favorite Button */}
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            toggleFavorite(listing.id);
-                          }}
-                          className={`absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur-md ${
-                            favorites.includes(listing.id)
-                              ? 'bg-red-500/80 hover:bg-red-600 text-white'
-                              : 'bg-white/80 hover:bg-white text-gray-900'
-                          }`}
-                        >
-                          <Heart
-                            size={20}
-                            fill={favorites.includes(listing.id) ? 'currentColor' : 'none'}
-                          />
-                        </button>
+                   
 
                         {/* Type Badge */}
                         <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold capitalize">
@@ -344,7 +299,7 @@ export default function ListingsPage() {
 
                         {/* Features */}
                         <div className="grid grid-cols-3 gap-3">
-                          {listing.type !== 'arsa' ? (
+                          {listing.type !== 'arsa' && listing.bedrooms > 0 ? (
                             <>
                               <div className="text-center">
                                 <div className="flex items-center justify-center w-8 h-8 bg-blue-50 rounded-lg mx-auto mb-1">

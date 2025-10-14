@@ -76,7 +76,7 @@ export default function HomePage() {
             <div className="space-y-8">
               <div className="inline-block">
                 <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
-                  ✨ Bodrum'un En İyi Gayrimenkul Danışmanı
+                  ✨ Mudanya'nın En İyi Gayrimenkul Danışmanı
                 </span>
               </div>
 
@@ -85,7 +85,7 @@ export default function HomePage() {
               </h1>
 
               <p className="text-xl text-gray-600 leading-relaxed max-w-lg">
-                Bodrum ve çevresinde satılık, kiralık lüks konutlar, villalar ve arsalar. Profesyonel danışmanlık ile hayalınız gerçek olsun.
+                Mudanya ve çevresinde satılık, kiralık lüks konutlar, villalar ve arsalar. Profesyonel danışmanlık ile hayalınız gerçek olsun.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
@@ -157,7 +157,7 @@ export default function HomePage() {
               {
                 icon: Home,
                 title: "Satılık Gayrimenkuller",
-                description: "Bodrum ve çevresinde satılık lüks konutlar, villalar, arsalar ve daha fazlası.",
+                description: "Mudanya ve çevresinde satılık lüks konutlar, villalar, arsalar ve daha fazlası.",
                 color: "blue"
               },
               {
@@ -214,7 +214,7 @@ export default function HomePage() {
           <div className="text-center mb-16">
             <h2 className="text-5xl font-bold text-gray-900 mb-4">Öne Çıkan İlanlar</h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Bodrum'un en güzel mülklerini keşfedin
+              Mudanya'nın en güzel mülklerini keşfedin
             </p>
           </div>
 
@@ -239,7 +239,7 @@ export default function HomePage() {
                   <h3 className="text-xl font-bold text-gray-900 mb-2">Lüks Villa</h3>
                   <div className="flex items-center gap-2 text-gray-600 mb-4">
                     <MapPin size={18} />
-                    <p>Bodrum, Muğla</p>
+                    <p>Mudanya, Bursa</p>
                   </div>
                   <p className="text-gray-600 text-sm mb-6">
                     Deniz manzaralı, 4 yatak odalı lüks villa. Modern tasarım ve yüksek kalite.
@@ -350,11 +350,11 @@ export default function HomePage() {
             <div>
               <h2 className="text-5xl font-bold text-gray-900 mb-6">Biz Kimiz</h2>
               <p className="text-lg text-gray-600 mb-6 leading-relaxed">
-                Kristal Marin Gayrimenkul, 15 yıldır Bodrum ve çevresinde gayrimenkul sektöründe hizmet vermektedir. 
+                Kristal Marin Gayrimenkul, 15 yıldır Mudanya ve çevresinde gayrimenkul sektöründe hizmet vermektedir. 
                 Müşteri memnuniyeti ve profesyonellik bizim temel ilkelerimizdir.
               </p>
               <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-                500+ mülk portföyü ve 1000+ mutlu müşteri ile Bodrum'un en güvenilir emlak danışmanlık firmasıyız.
+                500+ mülk portföyü ve 1000+ mutlu müşteri ile Mudanya'nın en güvenilir emlak danışmanlık firmasıyız.
               </p>
               <button className="px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold flex items-center gap-2">
                 Daha Fazla Bilgi Al
@@ -396,7 +396,7 @@ export default function HomePage() {
             <div className="bg-white/10 backdrop-blur-md p-8 rounded-2xl text-center text-white">
               <MapPin size={40} className="mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">Adres</h3>
-              <p className="text-blue-100">Bodrum, Muğla</p>
+              <p className="text-blue-100">Mudanya,Bursa</p>
               <p className="text-blue-100 text-sm">Türkiye</p>
             </div>
           </div>

@@ -1,34 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Upload, AlertCircle, CheckCircle, User } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function AdminAddListing() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
-  
-  // Danışanlar listesi
-  const consultants = [
-    {
-      id: 1,
-      name: 'Ahmet Yılmaz',
-      title: 'Kıdemli Gayrimenkul Danışmanı',
-      image: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100'
-    },
-    {
-      id: 2,
-      name: 'Ayşe Demir',
-      title: 'Gayrimenkul Uzmanı',
-      image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100'
-    },
-    {
-      id: 3,
-      name: 'Mehmet Kaya',
-      title: 'Emlak Danışmanı',
-      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100'
-    }
-  ];
+  const [consultants, setConsultants] = useState([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -42,8 +23,28 @@ export default function AdminAddListing() {
     features: '',
     images: [],
     status: 'aktif',
-    consultantId: '' // Yeni alan
+    consultantId: ''
   });
+
+  // Danışanları yükle
+  useEffect(() => {
+    loadConsultants();
+  }, []);
+
+  const loadConsultants = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('consultants')
+        .select('id, name, title, image_url, status')
+        .eq('status', 'aktif')
+        .order('name');
+
+      if (error) throw error;
+      setConsultants(data || []);
+    } catch (err) {
+      console.error('Danışanlar yüklenemedi:', err);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -61,6 +62,47 @@ export default function AdminAddListing() {
     }));
   };
 
+  const uploadImages = async (listingId) => {
+    if (formData.images.length === 0) return [];
+
+    setUploadingImages(true);
+    const uploadedUrls = [];
+
+    try {
+      for (let i = 0; i < formData.images.length; i++) {
+        const file = formData.images[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${listingId}_${i}_${Date.now()}.${fileExt}`;
+        const filePath = `listings/${fileName}`;
+
+        // Supabase Storage'a yükle
+        const { error: uploadError } = await supabase.storage
+          .from('listing-images')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        // Public URL al
+        const { data: urlData } = supabase.storage
+          .from('listing-images')
+          .getPublicUrl(filePath);
+
+        uploadedUrls.push({
+          url: urlData.publicUrl,
+          order: i,
+          is_primary: i === 0
+        });
+      }
+
+      return uploadedUrls;
+    } catch (err) {
+      console.error('Görsel yükleme hatası:', err);
+      throw new Error('Görseller yüklenemedi');
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -69,46 +111,73 @@ export default function AdminAddListing() {
     try {
       // Validasyon
       if (!formData.title || !formData.price || !formData.location) {
-        setError('Başlık, fiyat ve lokasyon gerekli');
-        setLoading(false);
-        return;
+        throw new Error('Başlık, fiyat ve lokasyon gerekli');
       }
 
-      // Supabase'e veri gönderme (entegrasyon için hazır)
-      // const { data, error: dbError } = await supabase
-      //   .from('listings')
-      //   .insert([{
-      //     title: formData.title,
-      //     description: formData.description,
-      //     price: formData.price,
-      //     location: formData.location,
-      //     type: formData.type,
-      //     bedrooms: parseInt(formData.bedrooms),
-      //     bathrooms: parseInt(formData.bathrooms),
-      //     area: parseInt(formData.area),
-      //     features: formData.features,
-      //     status: formData.status,
-      //     consultant_id: formData.consultantId,
-      //     created_at: new Date(),
-      //   }]);
+      console.log('📝 İlan ekleniyor...');
 
-      // if (dbError) throw dbError;
+      // 1. İlanı ekle
+      const { data: listing, error: listingError } = await supabase
+        .from('listings')
+        .insert([{
+          title: formData.title,
+          description: formData.description || null,
+          price: formData.price,
+          location: formData.location,
+          type: formData.type,
+          bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
+          bathrooms: formData.bathrooms ? parseInt(formData.bathrooms) : null,
+          area: formData.area ? parseInt(formData.area) : null,
+          features: formData.features || null,
+          status: formData.status,
+          consultant_id: formData.consultantId || null,
+        }])
+        .select()
+        .single();
 
-      // Simüle edilmiş başarı
+      if (listingError) throw listingError;
+
+      console.log('✅ İlan eklendi:', listing.id);
+
+      // 2. Görselleri yükle
+      if (formData.images.length > 0) {
+        console.log('📷 Görseller yükleniyor...');
+        const imageUrls = await uploadImages(listing.id);
+
+        // 3. Görsel kayıtlarını ekle
+        const imageRecords = imageUrls.map(img => ({
+          listing_id: listing.id,
+          image_url: img.url,
+          display_order: img.order,
+          is_primary: img.is_primary
+        }));
+
+        const { error: imageError } = await supabase
+          .from('listing_images')
+          .insert(imageRecords);
+
+        if (imageError) {
+          console.error('Görsel kayıtları eklenemedi:', imageError);
+        } else {
+          console.log('✅ Görseller eklendi');
+        }
+      }
+
+      // Başarı mesajı
+      setSuccess(true);
       setTimeout(() => {
-        setSuccess(true);
-        setTimeout(() => {
-          navigate('/admin/panel');
-        }, 1500);
-      }, 1000);
+        navigate('/admin/manage-listings');
+      }, 1500);
+
     } catch (err) {
-      setError('İlan ekleme sırasında hata oluştu: ' + err.message);
+      console.error('❌ İlan ekleme hatası:', err);
+      setError(err.message || 'İlan eklenirken bir hata oluştu');
       setLoading(false);
     }
   };
 
   // Seçili danışan bilgisi
-  const selectedConsultant = consultants.find(c => c.id === parseInt(formData.consultantId));
+  const selectedConsultant = consultants.find(c => c.id === formData.consultantId);
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20 pb-12">
@@ -141,282 +210,287 @@ export default function AdminAddListing() {
         )}
 
         {/* Form Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-8 space-y-8">
-            {/* Temel Bilgiler */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Temel Bilgiler</h2>
-              <div className="space-y-5">
-                <div>
+        <form onSubmit={handleSubmit}>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+            <div className="p-8 space-y-8">
+              {/* Temel Bilgiler */}
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Temel Bilgiler</h2>
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      İlan Başlığı *
+                    </label>
+                    <input
+                      type="text"
+                      name="title"
+                      value={formData.title}
+                      onChange={handleChange}
+                      placeholder="Örn: Deniz Manzaralı Lüks Villa"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Fiyat *
+                      </label>
+                      <input
+                        type="text"
+                        name="price"
+                        value={formData.price}
+                        onChange={handleChange}
+                        placeholder="Örn: $2,500,000"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        disabled={loading}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        Konum *
+                      </label>
+                      <input
+                        type="text"
+                        name="location"
+                        value={formData.location}
+                        onChange={handleChange}
+                        placeholder="Örn: Bodrum, Muğla"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        disabled={loading}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Tür
+                    </label>
+                    <select
+                      name="type"
+                      value={formData.type}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      disabled={loading}
+                    >
+                      <option value="villa">Villa</option>
+                      <option value="daire">Daire</option>
+                      <option value="arsa">Arsa</option>
+                      <option value="konut">Konut</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Açıklama
+                    </label>
+                    <textarea
+                      name="description"
+                      value={formData.description}
+                      onChange={handleChange}
+                      placeholder="İlan hakkında detaylı bilgi yazın..."
+                      rows="5"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Mülk Detayları */}
+              <div className="border-t border-gray-200 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Mülk Detayları</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Yatak Odası
+                    </label>
+                    <input
+                      type="number"
+                      name="bedrooms"
+                      value={formData.bedrooms}
+                      onChange={handleChange}
+                      placeholder="3"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Banyo
+                    </label>
+                    <input
+                      type="number"
+                      name="bathrooms"
+                      value={formData.bathrooms}
+                      onChange={handleChange}
+                      placeholder="2"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      Alan (m²)
+                    </label>
+                    <input
+                      type="number"
+                      name="area"
+                      value={formData.area}
+                      onChange={handleChange}
+                      placeholder="250"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5">
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    İlan Başlığı *
+                    Özellikler
                   </label>
-                  <input
-                    type="text"
-                    name="title"
-                    value={formData.title}
+                  <textarea
+                    name="features"
+                    value={formData.features}
                     onChange={handleChange}
-                    placeholder="Örn: Deniz Manzaralı Lüks Villa"
+                    placeholder="Havuz, Bahçe, Güvenlik Sistemi, Asansör (virgülle ayırın)"
+                    rows="3"
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     disabled={loading}
                   />
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">
-                      Fiyat *
-                    </label>
-                    <input
-                      type="text"
-                      name="price"
-                      value={formData.price}
-                      onChange={handleChange}
-                      placeholder="Örn: $2,500,000"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                      disabled={loading}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">
-                      Konum *
-                    </label>
-                    <input
-                      type="text"
-                      name="location"
-                      value={formData.location}
-                      onChange={handleChange}
-                      placeholder="Örn: Bodrum, Muğla"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-
+              {/* Danışan Seçimi */}
+              <div className="border-t border-gray-200 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Danışan Bilgileri</h2>
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Tür
+                    İlan Danışanı Seçin
                   </label>
                   <select
-                    name="type"
-                    value={formData.type}
+                    name="consultantId"
+                    value={formData.consultantId}
                     onChange={handleChange}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                     disabled={loading}
                   >
-                    <option value="villa">Villa</option>
-                    <option value="daire">Daire</option>
-                    <option value="arsa">Arsa</option>
-                    <option value="konut">Konut</option>
+                    <option value="">Danışan Seçiniz (Opsiyonel)</option>
+                    {consultants.map((consultant) => (
+                      <option key={consultant.id} value={consultant.id}>
+                        {consultant.name} - {consultant.title}
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-sm text-gray-500 mt-2">
+                    Bu ilanla ilgilenecek danışanı seçebilirsiniz
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Açıklama
-                  </label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    placeholder="İlan hakkında detaylı bilgi yazın..."
-                    rows="5"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Mülk Detayları */}
-            <div className="border-t border-gray-200 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Mülk Detayları</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Yatak Odası
-                  </label>
-                  <input
-                    type="number"
-                    name="bedrooms"
-                    value={formData.bedrooms}
-                    onChange={handleChange}
-                    placeholder="3"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Banyo
-                  </label>
-                  <input
-                    type="number"
-                    name="bathrooms"
-                    value={formData.bathrooms}
-                    onChange={handleChange}
-                    placeholder="2"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    disabled={loading}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-2">
-                    Alan (m²)
-                  </label>
-                  <input
-                    type="number"
-                    name="area"
-                    value={formData.area}
-                    onChange={handleChange}
-                    placeholder="250"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  Özellikler
-                </label>
-                <textarea
-                  name="features"
-                  value={formData.features}
-                  onChange={handleChange}
-                  placeholder="Havuz, Bahçe, Güvenlik Sistemi, Asansör vs."
-                  rows="3"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            {/* Danışan Seçimi - YENİ BÖLÜM */}
-            <div className="border-t border-gray-200 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Danışan Bilgileri</h2>
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  İlan Danışanı Seçin
-                </label>
-                <select
-                  name="consultantId"
-                  value={formData.consultantId}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  disabled={loading}
-                >
-                  <option value="">Danışan Seçiniz (Opsiyonel)</option>
-                  {consultants.map((consultant) => (
-                    <option key={consultant.id} value={consultant.id}>
-                      {consultant.name} - {consultant.title}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-sm text-gray-500 mt-2">
-                  Bu ilanla ilgilenecek danışanı seçebilirsiniz
-                </p>
-              </div>
-
-              {/* Seçili Danışan Önizleme */}
-              {selectedConsultant && (
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <img
-                      src={selectedConsultant.image}
-                      alt={selectedConsultant.name}
-                      className="w-16 h-16 rounded-lg object-cover"
-                    />
-                    <div>
-                      <p className="font-bold text-gray-900">{selectedConsultant.name}</p>
-                      <p className="text-sm text-blue-600">{selectedConsultant.title}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <User size={14} className="text-gray-500" />
-                        <span className="text-xs text-gray-600">Seçili Danışan</span>
+                {/* Seçili Danışan Önizleme */}
+                {selectedConsultant && (
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={selectedConsultant.image_url}
+                        alt={selectedConsultant.name}
+                        className="w-16 h-16 rounded-lg object-cover"
+                      />
+                      <div>
+                        <p className="font-bold text-gray-900">{selectedConsultant.name}</p>
+                        <p className="text-sm text-blue-600">{selectedConsultant.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <User size={14} className="text-gray-500" />
+                          <span className="text-xs text-gray-600">Seçili Danışan</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Görseller */}
-            <div className="border-t border-gray-200 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Görseller</h2>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
-                <Upload className="mx-auto text-gray-400 mb-3" size={40} />
-                <label className="cursor-pointer">
-                  <span className="text-blue-600 font-semibold hover:text-blue-700">Görselleri yükleyin</span>
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={loading}
-                  />
-                </label>
-                <p className="text-gray-500 text-sm mt-2">veya sürükleyin ve bırakın</p>
+                )}
               </div>
 
-              {formData.images.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-sm font-semibold text-gray-900 mb-3">
-                    {formData.images.length} dosya seçildi
-                  </p>
-                  <div className="space-y-2">
-                    {formData.images.map((file, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-                        <span className="text-sm text-gray-700">{file.name}</span>
-                        <span className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                      </div>
-                    ))}
+              {/* Görseller */}
+              <div className="border-t border-gray-200 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Görseller</h2>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors cursor-pointer">
+                  <Upload className="mx-auto text-gray-400 mb-3" size={40} />
+                  <label className="cursor-pointer">
+                    <span className="text-blue-600 font-semibold hover:text-blue-700">Görselleri yükleyin</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={loading}
+                    />
+                  </label>
+                  <p className="text-gray-500 text-sm mt-2">veya sürükleyin ve bırakın</p>
+                </div>
+
+                {formData.images.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm font-semibold text-gray-900 mb-3">
+                      {formData.images.length} dosya seçildi
+                    </p>
+                    <div className="space-y-2">
+                      {formData.images.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
+                          <span className="text-sm text-gray-700">{file.name}</span>
+                          <span className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* Durum */}
-            <div className="border-t border-gray-200 pt-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Yayın Ayarları</h2>
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  Durum
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  disabled={loading}
-                >
-                  <option value="aktif">Aktif (Yayında)</option>
-                  <option value="pasif">Pasif (Taslak)</option>
-                  <option value="satis-yapildi">Satış Yapıldı</option>
-                </select>
+                )}
               </div>
-            </div>
 
-            {/* Buttons */}
-            <div className="border-t border-gray-200 pt-8 flex gap-4">
-              <button
-                onClick={handleSubmit}
-                disabled={loading}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Ekleniyor...' : 'İlanı Yayınla'}
-              </button>
-              <Link
-                to="/admin/panel"
-                className="flex-1 px-6 py-3 bg-gray-100 text-gray-900 font-semibold rounded-lg hover:bg-gray-200 transition-all text-center"
-              >
-                İptal
-              </Link>
+              {/* Durum */}
+              <div className="border-t border-gray-200 pt-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">Yayın Ayarları</h2>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Durum
+                  </label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleChange}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                    disabled={loading}
+                  >
+                    <option value="aktif">Aktif (Yayında)</option>
+                    <option value="pasif">Pasif (Taslak)</option>
+                    <option value="satis-yapildi">Satış Yapıldı</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="border-t border-gray-200 pt-8 flex gap-4">
+                <button
+                  type="submit"
+                  disabled={loading || uploadingImages}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:shadow-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {uploadingImages ? 'Görseller Yükleniyor...' : loading ? 'Ekleniyor...' : 'İlanı Yayınla'}
+                </button>
+                <Link
+                  to="/admin/panel"
+                  className="flex-1 px-6 py-3 bg-gray-100 text-gray-900 font-semibold rounded-lg hover:bg-gray-200 transition-all text-center"
+                >
+                  İptal
+                </Link>
+              </div>
             </div>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

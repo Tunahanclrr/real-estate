@@ -1,7 +1,8 @@
-// App.js - Danışan rotası eklenmiş hali
+// App.js - Session Persist + Auth State Yönetimi
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Menu, X, LogOut } from 'lucide-react';
+import { supabase } from './lib/supabase';
 import HomePage from './pages/HomePage';
 import ListingsPage from './pages/ListingsPage';
 import ListingDetails from './pages/ListingDetails';
@@ -9,34 +10,140 @@ import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
 import AdminAddListing from './pages/AdminAddListing';
 import AdminManageListings from './pages/AdminManageListings';
-import AdminConsultants from './pages/AdminConsultants'; // YENİ
+import AdminConsultants from './pages/AdminConsultants';
 
 function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(!!window.adminToken);
-  const [adminEmail, setAdminEmail] = useState(window.adminEmail || '');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminName, setAdminName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [loading, setLoading] = useState(true);
 
+  // Sayfa yüklendiğinde ve auth state değiştiğinde session kontrolü
   useEffect(() => {
-    if (window.adminToken && window.adminEmail) {
-      setIsAdmin(true);
-      setAdminEmail(window.adminEmail);
-    }
-  }, []);
+    let mounted = true;
 
-  const handleLogout = () => {
-    delete window.adminToken;
-    delete window.adminEmail;
-    setIsAdmin(false);
-    setAdminEmail('');
-    setIsMenuOpen(false);
+    // Mevcut session'ı kontrol et
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session && mounted) {
+          console.log('✅ Session bulundu:', session.user.email);
+          
+          // Admin users tablosundan bilgileri al
+          const { data: adminUser } = await supabase
+            .from('admin_users')
+            .select('*')
+            .eq('email', session.user.email)
+            .eq('is_active', true)
+            .single();
+
+          const fullName = adminUser?.full_name || 
+                          session.user.user_metadata?.full_name || 
+                          session.user.email.split('@')[0];
+
+          setIsAdmin(true);
+          setAdminName(fullName);
+          setAdminEmail(session.user.email);
+          
+          // Global değişkenlere de kaydet
+          window.adminToken = session.access_token;
+          window.adminEmail = session.user.email;
+          window.adminUserName = fullName;
+        } else if (mounted) {
+          console.log('❌ Session bulunamadı');
+          setIsAdmin(false);
+          setAdminName('');
+          setAdminEmail('');
+        }
+      } catch (err) {
+        console.error('Session kontrol hatası:', err);
+        if (mounted) {
+          setIsAdmin(false);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    checkSession();
+
+    // Auth state değişikliklerini dinle
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state değişti:', event);
+      
+      if (!mounted) return;
+
+      if (event === 'SIGNED_IN' && session) {
+        const { data: adminUser } = await supabase
+          .from('admin_users')
+          .select('*')
+          .eq('email', session.user.email)
+          .eq('is_active', true)
+          .single();
+
+        const fullName = adminUser?.full_name || 
+                        session.user.user_metadata?.full_name || 
+                        session.user.email.split('@')[0];
+
+        setIsAdmin(true);
+        setAdminName(fullName);
+        setAdminEmail(session.user.email);
+        
+        window.adminToken = session.access_token;
+        window.adminEmail = session.user.email;
+        window.adminUserName = fullName;
+      } else if (event === 'SIGNED_OUT') {
+        setIsAdmin(false);
+        setAdminName('');
+        setAdminEmail('');
+        
+        delete window.adminToken;
+        delete window.adminEmail;
+        delete window.adminUserName;
+      }
+    });
+
+    // Cleanup
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []); // Boş array - sadece mount'ta çalışır
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setIsAdmin(false);
+      setAdminName('');
+      setAdminEmail('');
+      setIsMenuOpen(false);
+      
+      delete window.adminToken;
+      delete window.adminEmail;
+      delete window.adminUserName;
+      
+      console.log('✅ Çıkış başarılı');
+    } catch (err) {
+      console.error('❌ Çıkış hatası:', err);
+    }
   };
 
-  const handleAdminLogin = (email, token) => {
+  const handleAdminLogin = (userName, token, email) => {
+    setIsAdmin(true);
+    setAdminName(userName);
+    setAdminEmail(email);
+    
     window.adminEmail = email;
     window.adminToken = token;
-    setIsAdmin(true);
-    setAdminEmail(email);
+    window.adminUserName = userName;
   };
+
+  // Loading state
+
 
   return (
     <Router>
@@ -46,7 +153,7 @@ function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               {/* Logo */}
-              <div className="flex-shrink-0 flex items-center gap-2">
+              <Link to="/" className="flex-shrink-0 flex items-center gap-2">
                 <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
                   <span className="text-white font-black">K</span>
                 </div>
@@ -54,7 +161,7 @@ function App() {
                   <p className="text-gray-900 font-bold text-sm">KRISTAL</p>
                   <p className="text-blue-600 font-semibold text-xs">Marin Gayrimenkul</p>
                 </div>
-              </div>
+              </Link>
 
               {/* Desktop Menu */}
               <div className="hidden md:flex items-center gap-8">
@@ -70,7 +177,10 @@ function App() {
                       Admin Panel
                     </Link>
                     <div className="flex items-center gap-3 pl-8 border-l border-gray-200">
-                      <span className="text-sm text-gray-600">{adminEmail}</span>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-900">{adminName}</p>
+                        <p className="text-xs text-gray-500">{adminEmail}</p>
+                      </div>
                       <button
                         onClick={handleLogout}
                         className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold flex items-center gap-2"
@@ -110,7 +220,8 @@ function App() {
                       Admin Panel
                     </Link>
                     <div className="py-2 border-t border-gray-200 mt-2">
-                      <p className="text-sm text-gray-600 mb-2">{adminEmail}</p>
+                      <p className="text-sm font-semibold text-gray-900">{adminName}</p>
+                      <p className="text-xs text-gray-500 mb-2">{adminEmail}</p>
                       <button
                         onClick={handleLogout}
                         className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold flex items-center justify-center gap-2"
@@ -140,7 +251,7 @@ function App() {
             <Route path="/admin/panel" element={isAdmin ? <AdminPanel /> : <Navigate to="/admin" />} />
             <Route path="/admin/add-listing" element={isAdmin ? <AdminAddListing /> : <Navigate to="/admin" />} />
             <Route path="/admin/manage-listings" element={isAdmin ? <AdminManageListings /> : <Navigate to="/admin" />} />
-            <Route path="/admin/consultants" element={isAdmin ? <AdminConsultants /> : <Navigate to="/admin" />} /> {/* YENİ ROTA */}
+            <Route path="/admin/consultants" element={isAdmin ? <AdminConsultants /> : <Navigate to="/admin" />} />
           </Routes>
         </main>
 
@@ -155,7 +266,7 @@ function App() {
                   </div>
                   <p className="font-bold text-white">KRISTAL Marin</p>
                 </div>
-                <p className="text-sm">Bodrum'un en güvenilir gayrimenkul danışmanı</p>
+                <p className="text-sm">Mudanya'nın en güvenilir gayrimenkul danışmanı</p>
               </div>
               <div>
                 <h4 className="font-bold text-white mb-4">Hızlı Linkler</h4>
